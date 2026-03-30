@@ -1,26 +1,73 @@
 name: Daily AI News
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天早上9点触发 (UTC时间转换)
-  workflow_dispatch: # 支持手动点击运行测试
+    - cron: '0 1 * * *' # 每天早上9点触发 (UTC 1:00)
+  workflow_dispatch: 
 
 jobs:
   push_news:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch and Push
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 关键步骤：安装依赖库
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser requests
+
+      - name: Fetch and Push News
         shell: python
         run: |
-          import feedparser, requests, json
-          # 1. 配置 RSS 和 钉钉地址
+          import feedparser, requests, json, os
+          
+          # 从 GitHub Secrets 安全读取 Webhook 地址
+          DET_URL = os.environ.get("DINGTALK_TOKEN")
           RSS_URL = "https://rsshub.app/jiqizhixin/category/1"
-          # 替换下方为你的钉钉地址
-          DET_URL = "${{ secrets.DINGTALK_TOKEN }}" 
           
-          feed = feedparser.parse(RSS_URL)
-          md_text = "### [AI] AI行业动态\n\n"
-          for entry in feed.entries[:5]: # 取前5条
-              md_text += f"**{entry.title}**\n\n{entry.summary[:80]}...\n\n[详情]({entry.link})\n\n---\n"
-          
-          data = {"msgtype": "markdown", "markdown": {"title":"AI新闻", "text": md_text}}
-          requests.post(DET_URL, json=data)
+          try:
+              # 解析 RSS
+              feed = feedparser.parse(RSS_URL)
+              if not feed or not feed.entries:
+                  print("未抓取到内容，请检查 RSS 源是否可用")
+                  exit(0)
+
+              # 构造 Markdown，必须包含钉钉关键词 [AI]
+              md_text = "### [AI] 每日动态\n\n"
+              
+              # 仅取前 5 条避免消息过长
+              for entry in feed.entries[:5]:
+                  title = entry.title
+                  link = entry.link
+                  # 截取摘要并简单清理
+                  summary = entry.summary[:100].replace('<p>', '').replace('</p>', '').replace('<br>', '')
+                  md_text += f"**{title}**\n\n{summary}...\n\n[详情]({link})\n\n---\n"
+              
+              # 发送至钉钉
+              payload = {
+                  "msgtype": "markdown", 
+                  "markdown": {
+                      "title": "每日AI新闻", 
+                      "text": md_text
+                  }
+              }
+              
+              headers = {"Content-Type": "application/json"}
+              r = requests.post(DET_URL, json=payload, headers=headers)
+              
+              if r.status_code == 200:
+                  print("推送成功！")
+              else:
+                  print(f"推送失败，状态码: {r.status_code}, 响应: {r.text}")
+                  
+          except Exception as e:
+              print(f"脚本运行出错: {str(e)}")
+              exit(1)
+        env:
+          DINGTALK_TOKEN: ${{ secrets.DINGTALK_TOKEN }}
