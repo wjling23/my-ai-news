@@ -29,7 +29,7 @@ jobs:
           
           # 从 GitHub Secrets 安全读取 Webhook 地址
           DET_URL = os.environ.get("DINGTALK_TOKEN")
-          RSS_URL = "https://rsshub.app/jiqizhixin/category/1"
+          RSS_URL = "https://rss.shab.fun/jiqizhixin/category/1"
           
           try:
               # 解析 RSS
