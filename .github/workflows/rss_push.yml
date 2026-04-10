@@ -26,7 +26,7 @@ jobs:
       - name: Execute Pusher
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
-        run: python rss_pusher.py
+        run: python -u rss_pusher.py 2>&1
 
       - name: Save State
         run: |
