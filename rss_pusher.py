@@ -7,7 +7,7 @@ import re
 print(">>> 脚本启动成功，正在初始化环境...")
 
 # --- 配置区 ---
-RSS_URL = "https://www.jiqizhixin.com/rss"
+RSS_URL = "http://www.jiqizhixin.com/rss"
 WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK")
 STATUS_FILE = "last_id.txt"
 
