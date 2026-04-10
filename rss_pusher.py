@@ -4,37 +4,37 @@ import time
 import os
 import re
 
-print(">>> 量子位 AI 机器人启动：正在初始化...")
+print(">>> 量子位 AI 机器人列表版启动...")
 
 # --- 配置区 ---
-# 切换为量子位官方 RSS 源
 RSS_URL = "https://www.qbitai.com/feed"
 WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK")
 STATUS_FILE = "last_id.txt"
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
-def send_dingtalk(entry):
-    """推送量子位 AI 资讯"""
-    print(f"DEBUG: 正在准备推送: {entry.title}")
+def push_to_dingtalk(entries):
+    """将多条资讯汇总成一个列表发送"""
+    if not entries:
+        return
+
+    # 构建 Markdown 列表
+    # 标题必须包含机器人关键词，假设你的关键词还是 "AI"
+    content = ["### 🤖 量子位 AI 每日精选\n"]
     
-    # 提取摘要并清洗 HTML
-    summary_text = entry.get('summary', '点击链接查看详情')
-    summary_text = re.sub('<[^<]+?>', '', summary_text) 
-    
-    if len(summary_text) > 200:
-        summary_text = f"{summary_text[:200]}..."
+    for i, entry in enumerate(entries, 1):
+        # 清洗标题，去掉可能存在的 HTML 标签
+        clean_title = re.sub('<[^<]+?>', '', entry.title)
+        line = f"{i}. **{clean_title}** \n   [点击阅读全文]({entry.link})\n"
+        content.append(line)
 
     payload = {
         "msgtype": "markdown",
         "markdown": {
-            "title": "量子位 AI 早报",
-            "text": f"### AI 资讯: {entry.title}\n\n"
-                    f"{summary_text}\n\n"
-                    f"[点击阅读全文]({entry.link})"
+            "title": "AI 每日精选",
+            "text": "\n".join(content)
         }
     }
     
@@ -46,20 +46,16 @@ def send_dingtalk(entry):
 
 def main():
     if not WEBHOOK_URL:
-        print("ERROR: 环境变量 DINGTALK_WEBHOOK 缺失!")
+        print("ERROR: DINGTALK_WEBHOOK 缺失!")
         return
 
-    print(f"DEBUG: 正在抓取量子位源: {RSS_URL}")
     try:
-        # 增加超时时间，防止 GitHub 访问国内源波动
         response = requests.get(RSS_URL, headers=HEADERS, timeout=30)
         response.raise_for_status()
-        
         feed = feedparser.parse(response.content)
-        print(f"DEBUG: 抓取成功，当前共有 {len(feed.entries)} 条资讯")
+        print(f"DEBUG: 抓取成功，共有 {len(feed.entries)} 条资讯")
         
         if not feed.entries:
-            print("WARNING: 未发现文章内容")
             return
 
         # 读取上次记录
@@ -70,7 +66,6 @@ def main():
 
         new_entries = []
         for entry in feed.entries:
-            # 记录 Link 作为唯一标识
             if entry.link == last_link:
                 break
             new_entries.append(entry)
@@ -78,20 +73,16 @@ def main():
         if new_entries:
             print(f"DEBUG: 检测到 {len(new_entries)} 条新内容")
             
-            # 首次运行限流：只推送最新的 1 条
-            if not last_link:
-                print("DEBUG: 首次运行，推送最新 1 条进行测试")
-                new_entries = new_entries[:1]
+            # 限制最多展示 10 条
+            display_entries = new_entries[:10]
             
-            # 倒序推送
-            for entry in reversed(new_entries):
-                send_dingtalk(entry)
-                time.sleep(2)
+            # 一次性汇总推送
+            push_to_dingtalk(display_entries)
             
-            # 更新最后一条记录
+            # 更新最后一条记录（记录 RSS 中最顶端的那一条）
             with open(STATUS_FILE, "w") as f:
                 f.write(feed.entries[0].link)
-            print("✅ 状态保存成功")
+            print("✅ 推送完成，状态已保存")
         else:
             print("☕ 暂无新资讯。")
 
