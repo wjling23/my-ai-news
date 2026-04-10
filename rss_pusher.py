@@ -19,10 +19,15 @@ def push_to_dingtalk(entries):
     """将多条资讯汇总成一个列表发送"""
     if not entries:
         return
+        
+    # 获取北京时间 (UTC+8)
+    tz = timezone(timedelta(hours=8))
+    now = datetime.now(tz)
+    date_str = now.strftime("%Y年%m月%d日")
 
     # 构建 Markdown 列表
     # 标题必须包含机器人关键词，假设你的关键词还是 "AI"
-    content = ["### 🤖 量子位 AI 每日精选\n"]
+    content = [f"### 🤖 AI 每日精选 | {date_str}\n"]    
     
     for i, entry in enumerate(entries, 1):
         # 清洗标题，去掉可能存在的 HTML 标签
