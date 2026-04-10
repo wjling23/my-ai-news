@@ -90,4 +90,23 @@ def main():
             
             # 如果是第一次运行，为了防止消息轰炸，只发最新的 3 条
             if not last_id:
-                print("DEBUG: 首次运行
+                print("DEBUG: 首次运行限制推送前 3 条")
+                new_entries = new_entries[:3]
+            
+            # 倒序推送（保证钉钉里的顺序是新的在下面）
+            for entry in reversed(new_entries):
+                send_dingtalk(entry)
+                time.sleep(1.5) # 避开频率限制
+            
+            # 将最新的文章 ID 存入文件
+            with open(STATUS_FILE, "w") as f:
+                f.write(new_entries[0].id)
+            print("✅ 推送完成，状态已保存。")
+        else:
+            print("☕ 暂时没有新资讯，休息一下吧。")
+
+    except Exception as e:
+        print(f"❌ 程序崩溃: {e}")
+
+if __name__ == "__main__":
+    main()
