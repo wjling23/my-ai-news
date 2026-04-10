@@ -27,7 +27,7 @@ def send_dingtalk(entry):
     payload = {
         "msgtype": "markdown",
         "markdown": {
-            "title": "机器之心 RSS 更新",
+            "title": "AI咨询（RSS-机器之心）更新",
             "text": f"## {entry.title}\n\n"
                     f"> 发布时间: {entry.published}\n\n"
                     f"{entry.summary[:200]}...\n\n"
