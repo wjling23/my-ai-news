@@ -5,21 +5,17 @@ import os
 
 # --- 配置区 ---
 RSS_URL = "https://www.jiqizhixin.com/rss"
-# 对应 GitHub Secrets 中的 DINGTALK_WEBHOOK
 WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK")
 STATUS_FILE = "last_id.txt"
 
-# 模拟浏览器 Header，防止 403 拦截
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
 def send_dingtalk(entry):
-    """发送消息到钉钉"""
-    # 提取摘要，处理可能缺失 summary 的情况
+    print(f"DEBUG: 正在尝试推送文章: {entry.title}")
     summary_text = entry.get('summary', '点击链接查看详情')
     
-    # 清洗简单的 HTML 标签（可选）
     if "<" in summary_text:
         import re
         summary_text = re.sub('<[^<]+?>', '', summary_text)
@@ -27,11 +23,10 @@ def send_dingtalk(entry):
     if len(summary_text) > 200:
         summary_text = f"{summary_text[:200]}..."
 
-    # 构建消息体：确保标题包含你的钉钉关键词 "AI"
     payload = {
         "msgtype": "markdown",
         "markdown": {
-            "title": "AI 资讯更新（机器之心）",
+            "title": "AI 资讯更新",
             "text": f"## AI 资讯: {entry.title}\n\n"
                     f"> 发布时间: {entry.get('published', '未知时间')}\n\n"
                     f"{summary_text}\n\n"
@@ -41,53 +36,66 @@ def send_dingtalk(entry):
     
     try:
         response = requests.post(WEBHOOK_URL, json=payload, timeout=15)
-        print(f"钉钉返回结果: {response.text}")
+        print(f"DEBUG: 钉钉接口返回: {response.text}")
     except Exception as e:
-        print(f"发送到钉钉失败: {e}")
+        print(f"ERROR: 发送到钉钉失败: {e}")
 
 def main():
-    print(f"正在从 {RSS_URL} 抓取内容...")
-    
+    # 1. 检查环境变量
+    if not WEBHOOK_URL:
+        print("ERROR: 环境变量 DINGTALK_WEBHOOK 未配置或为空！")
+        return
+    print(f"DEBUG: 环境变量 DINGTALK_WEBHOOK 已读取（长度: {len(WEBHOOK_URL)}）")
+
+    # 2. 抓取 RSS
+    print(f"DEBUG: 正在抓取 RSS: {RSS_URL}")
     try:
-        # 使用 requests 获取内容以应用 Headers
         response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
-        response.raise_for_status() # 如果状态码不是 200 则抛出异常
-        
-        # 解析 RSS 内容
+        print(f"DEBUG: RSS 请求状态码: {response.status_code}")
         feed = feedparser.parse(response.content)
-        
-        if not feed.entries:
-            print("未抓取到任何有效的文章条目。")
-            return
-
-        # 读取上一次推送成功的 ID（记忆功能）
-        last_id = ""
-        if os.path.exists(STATUS_FILE):
-            with open(STATUS_FILE, "r") as f:
-                last_id = f.read().strip()
-
-        new_entries = []
-        for entry in feed.entries:
-            if entry.id == last_id:
-                break
-            new_entries.append(entry)
-
-        # 倒序推送并更新状态
-        if new_entries:
-            print(f"检测到 {len(new_entries)} 条新内容，开始推送...")
-            for entry in reversed(new_entries):
-                send_dingtalk(entry)
-                time.sleep(1.5) # 稍微增加延迟，确保钉钉接收顺畅
-            
-            # 记录最新一条的 ID
-            with open(STATUS_FILE, "w") as f:
-                f.write(new_entries[0].id)
-            print("✅ 状态文件已更新，推送任务完成。")
-        else:
-            print("☕ 暂无新内容。")
-
+        print(f"DEBUG: 本次抓取到文章总数: {len(feed.entries)}")
     except Exception as e:
-        print(f"❌ 程序运行出错: {e}")
+        print(f"ERROR: 抓取 RSS 过程出错: {e}")
+        return
+
+    if not feed.entries:
+        return
+
+    # 3. 读取记录文件
+    last_id = ""
+    if os.path.exists(STATUS_FILE):
+        with open(STATUS_FILE, "r") as f:
+            last_id = f.read().strip()
+        print(f"DEBUG: 读取到上次推送的 ID: {last_id}")
+    else:
+        print(f"DEBUG: 未发现状态文件 {STATUS_FILE}，将进行首次推送")
+
+    # 4. 筛选新内容
+    new_entries = []
+    for entry in feed.entries:
+        if entry.id == last_id:
+            print(f"DEBUG: 匹配到旧记录，停止筛选。新文章数量: {len(new_entries)}")
+            break
+        new_entries.append(entry)
+
+    # 如果运行过但没有新文章
+    if not new_entries and last_id:
+        print("DEBUG: 所有的内容都已经推送过了，没有新内容。")
+
+    # 5. 推送
+    if new_entries:
+        # 如果是第一次运行，为了防止轰炸，只推送最新的 3 条
+        if not last_id and len(new_entries) > 3:
+            print("DEBUG: 首次运行，仅推送最新的 3 条以防轰炸")
+            new_entries = new_entries[:3]
+
+        for entry in reversed(new_entries):
+            send_dingtalk(entry)
+            time.sleep(1.5)
+            
+        with open(STATUS_FILE, "w") as f:
+            f.write(new_entries[0].id)
+        print(f"DEBUG: 状态已更新为最新 ID: {new_entries[0].id}")
 
 if __name__ == "__main__":
     main()
