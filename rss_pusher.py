@@ -1,44 +1,46 @@
 import feedparser
 import requests
 import time
-import hmac
-import hashlib
-import base64
 import os
 
 # 配置区
 RSS_URL = "https://www.jiqizhixin.com/rss"
+# 对应 GitHub Secrets 中的 DINGTALK_WEBHOOK
 WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK")
-SECRET = os.getenv("DINGTALK_SECRET")
 STATUS_FILE = "last_id.txt"
 
-def get_sign():
-    timestamp = str(round(time.time() * 1000))
-    secret_enc = SECRET.encode('utf-8')
-    string_to_sign = f'{timestamp}\n{SECRET}'.encode('utf-8')
-    hmac_code = hmac.new(secret_enc, string_to_sign, digestmod=hashlib.sha256).digest()
-    return timestamp, base64.b64encode(hmac_code).decode('utf-8')
-
 def send_dingtalk(entry):
-    timestamp, sign = get_sign()
-    url = f"{WEBHOOK_URL}&timestamp={timestamp}&sign={sign}"
+    # 直接使用 Webhook URL，无需加签计算
+    url = WEBHOOK_URL
     
-    # 构建消息：机器之心通常会有精美的头图，可以加入 Markdown
+    # 提取摘要，处理可能缺失 summary 的情况
+    summary_text = entry.get('summary', '点击链接查看详情')
+    if len(summary_text) > 200:
+        summary_text = f"{summary_text[:200]}..."
+
+    # 构建消息：标题必须包含关键词 "AI"
     payload = {
         "msgtype": "markdown",
         "markdown": {
-            "title": "AI咨询（RSS-机器之心）更新",
-            "text": f"## {entry.title}\n\n"
-                    f"> 发布时间: {entry.published}\n\n"
-                    f"{entry.summary[:200]}...\n\n"
+            "title": "AI 资讯更新（机器之心）",
+            "text": f"## AI 资讯: {entry.title}\n\n"
+                    f"> 发布时间: {entry.get('published', '未知')}\n\n"
+                    f"{summary_text}\n\n"
                     f"[点击阅读全文]({entry.link})"
         }
     }
-    requests.post(url, json=payload)
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"钉钉返回结果: {response.text}")
+    except Exception as e:
+        print(f"发送失败: {e}")
 
 def main():
+    print("正在抓取 RSS 源...")
     feed = feedparser.parse(RSS_URL)
     if not feed.entries:
+        print("未抓取到任何内容")
         return
 
     # 读取上一次推送成功的 ID
@@ -49,19 +51,24 @@ def main():
 
     new_entries = []
     for entry in feed.entries:
+        # 这里的 entry.id 是识别文章是否重复的关键
         if entry.id == last_id:
             break
         new_entries.append(entry)
 
-    # 倒序推送（保证时间线正确），并更新状态
+    # 倒序推送（从旧到新），并更新状态
     if new_entries:
+        print(f"检测到 {len(new_entries)} 条新内容，开始推送...")
         for entry in reversed(new_entries):
             send_dingtalk(entry)
-            print(f"推送成功: {entry.title}")
-            time.sleep(1) # 避开频率限制
+            time.sleep(1) # 避开钉钉每分钟 20 条的限制
             
+        # 将本次抓取到的最顶端（最新）的一条 ID 存入文件
         with open(STATUS_FILE, "w") as f:
-            f.write(new_entries[0].id) # 将最新的 ID 写入文件
+            f.write(new_entries[0].id)
+        print("状态文件已更新")
+    else:
+        print("暂无新内容需要推送")
 
 if __name__ == "__main__":
     main()
