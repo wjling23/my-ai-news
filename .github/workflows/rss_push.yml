@@ -1,7 +1,7 @@
 name: Daily AI News
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天早上9点触发 (UTC时间转换)
+    - cron: '48 0 * * *' # 每天早上9点触发 (UTC时间转换)
   workflow_dispatch: # 支持手动点击运行测试
 
 jobs:
